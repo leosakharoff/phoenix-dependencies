@@ -43,10 +43,14 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .key.filtering button[aria-pressed="false"] { color: #b0b0b0; }
 .key.filtering button[aria-pressed="false"] .dot { opacity: .35; }
 .key .all { color: var(--muted); text-decoration: underline; }
-.lens { margin: 6px 0 0; max-width: 1000px; font-size: 12.5px; line-height: 1.5; color: var(--soft); }
-.lens .t { font-weight: 700; color: var(--text); }
-.lens .leave { all: unset; cursor: pointer; color: var(--muted); text-decoration: underline; margin-left: 6px; white-space: nowrap; }
-.lens .leave:hover { color: var(--text); }
+/* A view's description: one box, in the same place for every view, right under the title line. */
+.lens { margin: 12px 0 4px 8px; max-width: 540px; box-sizing: border-box; padding: 9px 14px 11px; background: #fafafa;
+  border: 1px solid #d6d6d6; border-left: 3px solid var(--text); font-size: 12.5px; line-height: 1.5; color: var(--soft); }
+.lens .lhead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 3px; }
+.lens .t { font-weight: 700; font-size: 13px; color: var(--text); }
+.lens .leave { all: unset; margin-left: auto; cursor: pointer; white-space: nowrap; font-size: 11.5px; color: var(--text);
+  background: var(--paper); border: 1px solid #b5b5b5; border-radius: 3px; padding: 1px 8px; }
+.lens .leave:hover { border-color: var(--text); }
 .nodes .off { opacity: .07; }
 .edges line.off { stroke-opacity: .03; }
 .seclabel.empty { fill: #bbbbbb !important; }
@@ -196,8 +200,8 @@ body { margin: 0; }
     </div>
     <datalist id="pkglist"></datalist>
   </div>
+  <div class="lens" id="lens" role="note" hidden></div>
   <ul class="key" id="key"></ul>
-  <p class="lens" id="lens" hidden></p>
   <div class="stage">
     <div class="graph" id="graph"><figure class="panel"><figcaption class="ptitle" hidden></figcaption><svg class="map" viewBox="-930 -550 1860 1100" role="img" aria-label="Dependency graph of the 341 package versions Phoenix ships"></svg></figure></div>
     <div class="box" id="box" hidden></div>
@@ -443,7 +447,7 @@ function paint() {
   for (const b of document.querySelectorAll('.views button')) b.setAttribute('aria-pressed', String(!lens && b.dataset.view === view));
   const cap = document.getElementById('lens'), l = lens && LENSES.find(x => x.id === lens);
   cap.hidden = !l;
-  cap.innerHTML = l ? `<span class="t">${esc(l.title)}.</span> ${S.caption} <button type="button" class="leave">Back to the graph</button>` : '';
+  cap.innerHTML = l ? `<div class="lhead"><span class="t">${esc(l.title)}</span><button type="button" class="leave" title="Escape does the same">← Back to the graph</button></div><div>${S.caption}</div>` : '';
   document.querySelector('#menu .ml').textContent = l ? `Views: ${l.title}` : 'Views';
   fit();
 }
@@ -693,6 +697,7 @@ find.addEventListener('input', () => {
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
   if (drawer.classList.contains('open')) { openDrawer(false); return; }
+  if (!pinned && !pinnedSec && lens) { setLens(null); return; } // nothing selected: back to the graph
   pinned = null; pinnedSec = null; hover = null; hoverSec = null; tip.hidden = true; render();
 });
 const fromAddress = () => { const m = /^#view=([\w-]+)$/.exec(location.hash); return m && LENSES.some(l => l.id === m[1]) ? m[1] : null; };
