@@ -63,11 +63,13 @@ svg.map text { font-family: var(--sans); fill: #333333; }
 .edges line { stroke: var(--edge); stroke-opacity: .2; stroke-width: 0.9; }
 .edges line.down { stroke: #111111; stroke-opacity: .85; stroke-width: 1.6; }
 .edges line.up { stroke: #777777; stroke-opacity: .75; stroke-width: 1.3; }
+.edges line.far { stroke-opacity: .4; stroke-width: 1; }
 .nodes circle { stroke: none; }
 .nodes circle.notin { fill: var(--paper); stroke: var(--notin); stroke-width: 1.4; }
 .nodes circle.insec { stroke: #111111; stroke-width: 1.2; }
 .nodes rect { fill: #1a1a1a; }
 .nodes .dim { opacity: .12; }
+.nodes .far { opacity: .5; }
 .nodes .sel { stroke: #111111; stroke-width: 2.6; }
 .peek { pointer-events: none; }
 .peek circle { fill: none; }
@@ -239,35 +241,46 @@ function paint() {
 }
 
 // A sector's relations: its packages, the nodes outside that use them, the packages outside that they use.
-function sectorRel(key) {
+function sectorRel(key, mode = relMode) {
   const inSec = new Set(pkgs.filter(n => n.sector === key).map(n => n.id)), usedBy = new Set(), uses = new Set();
   for (const i of inSec) {
-    for (const j of relMode === 'direct' ? ins.get(i) : upOf(i)) if (!inSec.has(j)) usedBy.add(j);
-    for (const j of relMode === 'direct' ? outs.get(i) : downOf(i)) if (!inSec.has(j)) uses.add(j);
+    for (const j of mode === 'direct' ? ins.get(i) : upOf(i)) if (!inSec.has(j)) usedBy.add(j);
+    for (const j of mode === 'direct' ? outs.get(i) : downOf(i)) if (!inSec.has(j)) uses.add(j);
   }
   return { inSec, usedBy, uses };
 }
 
 // A node's relations, with the same choice: one edge away, or any number of edges away.
-const nodeRel = id => relMode === 'direct' ? { usedBy: new Set(ins.get(id)), uses: new Set(outs.get(id)) } : { usedBy: upOf(id), uses: downOf(id) };
+const nodeRel = (id, mode = relMode) => mode === 'direct' ? { usedBy: new Set(ins.get(id)), uses: new Set(outs.get(id)) } : { usedBy: upOf(id), uses: downOf(id) };
+const related = (r, nid) => r.usedBy.has(nid) || r.uses.has(nid) || !!r.inSec?.has(nid);
+// An edge of the selection: 'down' towards what it uses, 'up' from what uses it. id is the node, or null for a sector.
+function edgeClass(e, id, r, mode) {
+  if (id && mode === 'direct') return e.source === id ? 'down' : e.target === id ? 'up' : '';
+  if (id) return (e.source === id || r.uses.has(e.source)) && r.uses.has(e.target) ? 'down' : (e.target === id || r.usedBy.has(e.target)) && r.usedBy.has(e.source) ? 'up' : '';
+  const { inSec, usedBy, uses } = r;
+  if (mode === 'direct') return inSec.has(e.source) ? 'down' : inSec.has(e.target) ? 'up' : '';
+  return (inSec.has(e.source) || uses.has(e.source)) && (inSec.has(e.target) || uses.has(e.target)) ? 'down' : usedBy.has(e.source) && (inSec.has(e.target) || usedBy.has(e.target)) ? 'up' : '';
+}
 function render() {
   const id = hover || pinned, sk = id ? null : (hoverSec || pinnedSec);
-  const nr = id ? nodeRel(id) : null, rel = sk ? sectorRel(sk) : null;
+  const relOf = mode => id ? nodeRel(id, mode) : sk ? sectorRel(sk, mode) : null;
+  // With Direct, the relations further out are drawn too, fainter.
+  const near = relOf(relMode), far = near && relMode === 'direct' ? relOf('transitive') : null;
   for (const [nid, m] of marks) {
-    m.classList.toggle('off', !passes(byId.get(nid)));
+    const on = passes(byId.get(nid)), isNear = !near || nid === id || related(near, nid), isFar = !isNear && on && !!far && related(far, nid);
+    m.classList.toggle('off', !on);
     m.classList.toggle('sel', nid === id);
-    m.classList.toggle('insec', !!rel && rel.inSec.has(nid));
-    m.classList.toggle('dim', id ? !(nid === id || nr.usedBy.has(nid) || nr.uses.has(nid)) : rel ? !(rel.inSec.has(nid) || rel.usedBy.has(nid) || rel.uses.has(nid)) : false);
+    m.classList.toggle('insec', !!sk && near.inSec.has(nid));
+    m.classList.toggle('far', isFar);
+    m.classList.toggle('dim', !isNear && !isFar);
   }
   DATA.edges.forEach((e, i) => {
     let c = '';
     if (!passes(byId.get(e.source)) || !passes(byId.get(e.target))) c = 'off';
-    else if (id && relMode === 'direct') c = e.source === id ? 'down' : e.target === id ? 'up' : '';
-    else if (id) c = (e.source === id || nr.uses.has(e.source)) && nr.uses.has(e.target) ? 'down' : (e.target === id || nr.usedBy.has(e.target)) && nr.usedBy.has(e.source) ? 'up' : '';
-    else if (rel) {
-      const { inSec, usedBy, uses } = rel;
-      if (relMode === 'direct') c = inSec.has(e.source) ? 'down' : inSec.has(e.target) ? 'up' : '';
-      else c = (inSec.has(e.source) || uses.has(e.source)) && (inSec.has(e.target) || uses.has(e.target)) ? 'down' : usedBy.has(e.source) && (inSec.has(e.target) || usedBy.has(e.target)) ? 'up' : '';
+    else if (near) {
+      c = edgeClass(e, id, near, relMode);
+      const f = !c && far ? edgeClass(e, id, far, 'transitive') : '';
+      if (f) c = `${f} far`;
     }
     lines[i].setAttribute('class', c);
   });
