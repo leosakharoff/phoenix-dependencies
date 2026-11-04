@@ -27,7 +27,7 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .views { display: flex; gap: 18px; }
 .views button { all: unset; font-size: 20px; color: var(--muted); cursor: pointer; }
 .views button[aria-pressed="true"] { color: var(--text); }
-.views button:focus-visible, .find input:focus-visible, .box button:focus-visible, .menu:focus-visible, #lenses .leave:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.views button:focus-visible, .find input:focus-visible, .box button:focus-visible, .menu:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .tools { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 .find { display: flex; gap: 6px; align-items: baseline; font-size: 12px; color: var(--muted); }
 .find input { font: 12px var(--sans); width: 170px; padding: 2px 4px; border: 1px solid #b5b5b5; border-radius: 0; background: var(--paper); color: var(--text); }
@@ -155,9 +155,6 @@ svg.map text.seclabel { fill: #4a4a4a; }
 #lenses button:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 /* The chosen view's description drops down under its name. */
 #lenses .desc { padding: 0 12px 11px 10px; font-size: 12px; line-height: 1.5; color: var(--soft); animation: drop .18s ease-out; }
-#lenses .leave { all: unset; display: inline-block; margin-top: 9px; cursor: pointer; font-size: 11.5px; color: var(--text);
-  background: var(--paper); border: 1px solid #b5b5b5; border-radius: 3px; padding: 1px 8px; }
-#lenses .leave:hover { border-color: var(--text); }
 @keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { #lenses .desc { animation: none; } }
 #lenses .t { display: block; font-size: 13px; font-weight: 700; }
@@ -673,7 +670,7 @@ const drawer = document.getElementById('drawer'), menu = document.getElementById
 const listLenses = () => { document.getElementById('lenses').innerHTML = [{ id: '', title: 'The graph', question: "2a's or 2b's results, as the buttons at the top choose." }, ...LENSES]
   .map(l => { const on = (l.id || null) === lens;
     return `<li class="${on ? 'on' : ''}"><button type="button" data-lens="${l.id}" aria-current="${on}"><span class="t">${esc(l.title)}</span><span class="q">${esc(l.question)}</span></button>`
-      + (on && lens ? `<div class="desc">${S.caption}<br><button type="button" class="leave" title="Escape does the same">← Back to the graph</button></div>` : '') + '</li>'; }).join(''); };
+      + (on && lens ? `<div class="desc">${S.caption}</div>` : '') + '</li>'; }).join(''); };
 function openDrawer(open, refocus = true) {
   if (open) listLenses();
   drawer.classList.toggle('open', open); drawer.toggleAttribute('inert', !open); menu.setAttribute('aria-expanded', String(open));
@@ -684,7 +681,6 @@ menu.addEventListener('click', () => openDrawer(!drawer.classList.contains('open
 drawer.addEventListener('click', ev => {
   const b = ev.target.closest('[data-lens]');
   if (ev.target.closest('.shut')) openDrawer(false);
-  else if (ev.target.closest('.leave')) { setLens(null); drawer.querySelector('[aria-current="true"]').focus(); }
   else if (b) { setLens(b.dataset.lens || null); drawer.querySelector('[aria-current="true"]').focus(); } // the panel stays open, the description drops down
 });
 // Beside the page, the panel stays while the graph is used; over the page (a narrow screen), a tap elsewhere closes it.
