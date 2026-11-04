@@ -77,7 +77,10 @@ svg.map text { font-family: var(--sans); fill: #333333; }
 .bracket.on { stroke: #111111; stroke-width: 3.4; }
 .brackethit { fill: none; stroke: transparent; stroke-width: 24; pointer-events: stroke; cursor: pointer; }
 .leader { fill: none; stroke: #a0a0a0; stroke-width: 1; }
-.seclabel { font-size: 23px; cursor: pointer; }
+.seclabel { font-size: 17px; cursor: pointer; }
+svg.map text.seclabel { fill: #4a4a4a; }
+.seclabel .n { fill: #9a9a9a; }
+.seclabel.empty .n { fill: #cfcfcf; }
 .seclabel.on { font-weight: 700; fill: #111111 !important; }
 .seclabel:focus { outline: none; text-decoration: underline; }
 .edges line { stroke: var(--edge); stroke-opacity: .2; stroke-width: 0.9; }
@@ -372,9 +375,10 @@ function drawPanel(svg) {
     const bracket = el('path', { class: 'bracket', d: arc }, bg);
     el('path', { class: 'brackethit', d: arc, 'data-sec': s.key }, bg);
     el('polyline', { class: 'leader', points: `${s.anchor} ${s.elbow} ${s.text[0] - s.side * 8},${s.text[1]}` }, bg);
-    const label = el('text', { class: 'seclabel', x: s.text[0], y: s.text[1] + 7, 'text-anchor': s.side > 0 ? 'start' : 'end',
+    const label = el('text', { class: 'seclabel', x: s.text[0], y: s.text[1] + 6, 'text-anchor': s.side > 0 ? 'start' : 'end',
       'data-sec': s.key, tabindex: 0, role: 'button', 'aria-label': `${s.label}, ${s.count} packages` }, bg);
-    label.textContent = `${s.label} (${s.count})`;
+    label.textContent = `${s.label} `; // the name, and its count in grey
+    el('tspan', { class: 'n' }, label).textContent = `(${s.count})`;
     secEls.set(s.key, { band, bracket, label });
   });
   DATA.rings.slice(1).forEach((r, i) => ringEls.set(i + 1, { r, circle: el('circle', { class: 'ring', r }, bg) }));
