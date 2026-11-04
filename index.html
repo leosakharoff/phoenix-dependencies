@@ -137,7 +137,13 @@ svg.map text { font-family: var(--sans); fill: #333333; }
   background: var(--paper); border-left: 1px solid #c8c8c8; box-shadow: -4px 0 18px rgb(0 0 0 / .08);
   padding: 16px max(18px, env(safe-area-inset-right, 0px)) 18px 18px; transform: translateX(100%); visibility: hidden; transition: transform .2s ease, visibility .2s; }
 .drawer.open { transform: none; visibility: visible; }
-@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+/* On a wide screen the open panel takes its room beside the page instead of covering the graph. */
+.wrap { transition: padding-right .2s ease; }
+@media (min-width: 1001px) {
+  body.docked .wrap { padding-right: calc(min(340px, 92vw) + 16px); }
+  body.docked .drawer { box-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) { .drawer, .wrap { transition: none; } }
 .dhead { display: flex; align-items: baseline; font-weight: 700; font-size: 15px; }
 .dhead .shut { all: unset; margin-left: auto; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 400; }
 .dhead .shut:hover { color: var(--text); }
@@ -664,6 +670,7 @@ const listLenses = () => { document.getElementById('lenses').innerHTML = [{ id: 
 function openDrawer(open, refocus = true) {
   if (open) listLenses();
   drawer.classList.toggle('open', open); drawer.toggleAttribute('inert', !open); menu.setAttribute('aria-expanded', String(open));
+  document.body.classList.toggle('docked', open);
   if (refocus) (open ? drawer.querySelector('[aria-current="true"]') : menu).focus();
 }
 menu.addEventListener('click', () => openDrawer(!drawer.classList.contains('open')));
@@ -672,7 +679,10 @@ drawer.addEventListener('click', ev => {
   if (ev.target.closest('.shut')) openDrawer(false);
   else if (b) { setLens(b.dataset.lens || null); listLenses(); drawer.querySelector('[aria-current="true"]').focus(); } // the panel stays open
 });
-document.addEventListener('pointerdown', ev => { if (drawer.classList.contains('open') && !ev.composedPath().some(e => e === drawer || e === menu)) openDrawer(false, false); });
+// Beside the page, the panel stays while the graph is used; over the page (a narrow screen), a tap elsewhere closes it.
+const narrow = matchMedia('(max-width: 1000px)');
+document.addEventListener('pointerdown', ev => { if (drawer.classList.contains('open') && narrow.matches && !ev.composedPath().some(e => e === drawer || e === menu)) openDrawer(false, false); });
+document.querySelector('.wrap').addEventListener('transitionend', ev => { if (ev.propertyName === 'padding-right') fit(); });
 
 const find = document.getElementById('find');
 document.getElementById('pkglist').innerHTML = [...pkgs].sort((a, b) => a.id.localeCompare(b.id)).map(n => `<option value="${esc(pretty(n))}">`).join('');
