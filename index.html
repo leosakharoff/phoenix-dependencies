@@ -375,12 +375,17 @@ svg.addEventListener('pointermove', ev => {
 });
 svg.addEventListener('pointerleave', () => { hover = null; hoverSec = null; tip.hidden = true; render(); });
 function selectSector(k) { pinnedSec = k && k !== pinnedSec ? k : null; pinned = null; render(); }
+// Back to the default: nothing selected, no filter, Direct. The view, 2a or 2b, stays.
+function reset() { pinned = null; pinnedSec = null; hover = null; hoverSec = null; filter.clear(); relMode = 'direct'; find.value = ''; tip.hidden = true; paint(); render(); }
 svg.addEventListener('click', ev => {
   const t = target(ev);
   if (t.node) { pinned = t.node.id !== pinned ? t.node.id : null; render(); }
   else if (t.sector) selectSector(t.sector);
-  else { pinned = null; pinnedSec = null; render(); }
+  else reset();
 });
+// A click on the page's white background resets too; the graph, the box and the controls handle their own clicks.
+// The path, not closest(): the key and the box redraw themselves on a click, so its target may have left the page.
+document.addEventListener('click', ev => { if (!ev.composedPath().some(e => e.matches?.('svg.map, .box, .key, .views, .find'))) reset(); });
 svg.addEventListener('keydown', ev => { const s = ev.target.closest && ev.target.closest('.seclabel'); if (s && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); selectSector(s.dataset.sec); } });
 document.getElementById('box').addEventListener('click', ev => {
   const it = ev.target.closest('.it'), mode = ev.target.closest('[data-mode]');
