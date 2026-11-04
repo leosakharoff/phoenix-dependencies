@@ -43,6 +43,7 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .key.filtering button[aria-pressed="false"] { color: #b0b0b0; }
 .key.filtering button[aria-pressed="false"] .dot { opacity: .35; }
 .key .all { color: var(--muted); text-decoration: underline; }
+.key .fixed { gap: 5px; align-items: center; color: var(--muted); padding-left: 14px; border-left: 1px solid var(--hair); }
 .nodes .off { opacity: .07; }
 .edges line.off { stroke-opacity: .03; }
 .seclabel.empty { fill: #bbbbbb !important; }
@@ -248,7 +249,8 @@ const SECTORS = new Map(DATA.sectors.map(s => [s.key, s]));
 // The outermost ring holds everything from its step out. Phoenix's projects pass every ring filter.
 const LAST = DATA.rings.length - 1, ringOf = n => Math.min(n.step, LAST);
 let S; // the current colouring: of(n) gives a node's class, key the classes in order, color a class's colour; size and caption for some views
-const passes = n => (!filter.size || filter.has(S.of(n))) && (!ringFilter.size || n.kind !== 'package' || ringFilter.has(ringOf(n)));
+// Phoenix's projects are no result: every filter keeps them, so the packages always show what they hang from.
+const passes = n => n.kind !== 'package' || ((!filter.size || filter.has(S.of(n))) && (!ringFilter.size || ringFilter.has(ringOf(n))));
 const radius = n => S.size && n.kind === 'package' ? S.size(n) : n.r;
 
 const kind = (v, n) => n.kind !== 'package' ? 'own' : (VIEWS[v].classes.find(c => c[0] === n[VIEWS[v].field]) || [0, 'notin'])[1];
@@ -440,7 +442,8 @@ function paint() {
   counts.own = nodes.length - pkgs.length;
   const chip = (k, t) => `<li><button type="button" data-k="${k}" aria-pressed="${filter.has(k)}">${sdot(k)}${esc(t)} (${counts[k] || 0})</button></li>`;
   const key = document.getElementById('key');
-  key.innerHTML = (two ? '' : S.key.filter(([k]) => counts[k]).map(([k, t]) => chip(k, t)).join('') + chip('own', 'Phoenix projects')) // two panels: each has its own key
+  key.innerHTML = (two ? '' : S.key.filter(([k]) => counts[k]).map(([k, t]) => chip(k, t)).join('') // two panels: each has its own key
+      + `<li class="fixed">${dot('own')}Phoenix projects (${counts.own})</li>`) // a legend entry, not a filter
     + (filter.size || ringFilter.size ? '<li><button type="button" class="all">Show all</button></li>' : '');
   for (const p of panels) for (const [k, s] of p.ringEls) { const on = ringFilter.has(k); s.key.classList.toggle('on', on); s.circle.classList.toggle('on', on); s.key.setAttribute('aria-pressed', String(on)); }
   key.classList.toggle('filtering', filter.size > 0);
