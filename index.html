@@ -28,7 +28,7 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .views button { all: unset; font-size: 20px; color: var(--muted); cursor: pointer; }
 .views button[aria-pressed="true"] { color: var(--text); }
 .views button:focus-visible, .find input:focus-visible, .box button:focus-visible, .menu:focus-visible, .lens .leave:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.tools { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.tools { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 .find { display: flex; gap: 6px; align-items: baseline; font-size: 12px; color: var(--muted); }
 .find input { font: 12px var(--sans); width: 170px; padding: 2px 4px; border: 1px solid #b5b5b5; border-radius: 0; background: var(--paper); color: var(--text); }
 .menu { all: unset; display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--soft); cursor: pointer; }
@@ -86,6 +86,14 @@ svg.map text { font-family: var(--sans); fill: #333333; }
 .nodes rect { fill: #1a1a1a; }
 .nodes .dim { opacity: .12; }
 .nodes .far { opacity: .5; }
+.nodes .quiet { opacity: .3; }
+/* The side-by-side view: two panels with the same positions, cut to the circle; a sector's name shows on hover. */
+.panel { margin: 0; min-width: 0; }
+.ptitle { font-size: 12px; color: var(--soft); margin: 8px 0 0; line-height: 1.6; }
+.ptitle .h { display: block; font-weight: 700; color: var(--text); font-size: 13px; }
+.ptitle .lg { display: inline-flex; gap: 4px; align-items: center; margin-right: 12px; white-space: nowrap; }
+.graph.compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.graph.compare .seclabel, .graph.compare .leader { display: none; }
 .nodes .sel { stroke: #111111; stroke-width: 2.6; }
 .peek { pointer-events: none; }
 .peek circle { fill: none; }
@@ -155,6 +163,8 @@ svg.map text { font-family: var(--sans); fill: #333333; }
   .menu { align-self: flex-end; }
   .graph { overflow-x: auto; }
   svg.map { min-width: 760px; max-height: none; }
+  .graph.compare { grid-template-columns: minmax(0, 1fr); }
+  .graph.compare svg.map { min-width: 0; }
   /* On a phone the box is a panel at the bottom of the screen, so a tap shows its result at once. */
   .box { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 42vh; margin: 0; z-index: 15;
     border-left: 0; border-top: 1px solid #c8c8c8; box-shadow: 0 -2px 10px rgb(0 0 0 / .08);
@@ -183,7 +193,7 @@ body { margin: 0; }
   <ul class="key" id="key"></ul>
   <p class="lens" id="lens" hidden></p>
   <div class="stage">
-    <div class="graph"><svg class="map" viewBox="-930 -550 1860 1100" role="img" aria-label="Dependency graph of the 341 package versions Phoenix ships"></svg></div>
+    <div class="graph" id="graph"><figure class="panel"><figcaption class="ptitle" hidden></figcaption><svg class="map" viewBox="-930 -550 1860 1100" role="img" aria-label="Dependency graph of the 341 package versions Phoenix ships"></svg></figure></div>
     <div class="box" id="box" hidden></div>
   </div>
   <p class="foot">The 341 package versions shipped with Phoenix 79cb67a7 (linux-x64), with edges from the lock files. Rings give the distance from Phoenix's projects, sectors the declared source repository. Descriptions come from each package's .nuspec and from Phoenix's dependencies.yml, the reasons from the result files of parts 2a and 2b.</p>
@@ -235,7 +245,8 @@ const radius = n => S.size && n.kind === 'package' ? S.size(n) : n.r;
 const kind = (v, n) => n.kind !== 'package' ? 'own' : (VIEWS[v].classes.find(c => c[0] === n[VIEWS[v].field]) || [0, 'notin'])[1];
 const word = (v, n) => { const k = kind(v, n); return k === 'own' ? 'Phoenix project' : VIEWS[v].classes.find(c => c[1] === k && c[2])[2]; };
 const dot = k => k === 'own' ? '<span class="dot own"></span>' : k === 'notin' ? '<span class="dot notin"></span>' : `<span class="dot" style="background:var(--c-${k})"></span>`;
-const sdot = k => k === 'own' || k === 'notin' ? dot(k) : `<span class="dot" style="background:${S.color(k)}"></span>`; // in the current colouring
+const dotIn = (sc, k) => k === 'own' || k === 'notin' ? dot(k) : `<span class="dot" style="background:${sc.color(k)}"></span>`;
+const sdot = k => dotIn(S, k); // in the current colouring
 const pretty = n => n.kind === 'package' ? `${n.name} ${n.version}` : n.name;
 const brk = name => esc(name).replace(/\./g, '.<wbr>'); // break long package names only after a dot
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -246,18 +257,21 @@ const REPRODUCED = new Set(['as is', 'with configuration']), PUB_OK = new Set(['
 const count = (list, f) => list.filter(f).length, LIGHT = '#e4e4e4';
 const key2b = () => VIEWS['2b'].classes.filter(c => c[2]).map(([, k, t]) => [k, t, k === 'notin' ? null : `var(--c-${k})`]);
 const LENSES = [
-  { id: '2a-2b', title: '2a and 2b together', question: 'Does a deterministic build reproduce the release?', build() {
-    const of = n => n.s2a === 'not in 2a' || n.s2b === 'not in 2b' ? 'notin'
-      : REPRODUCED.has(n.s2a) ? ({ 'from the release': 'both', 'not reproduced': 'differs' }[n.s2b] || 'nobuild')
-      : n.s2a === 'unreproducible' ? 'unrep' : 'failed';
-    const c = k => count(pkgs, n => of(n) === k), both = count(pkgs, n => of(n) !== 'notin'), det = c('both') + c('differs') + c('nobuild');
-    const among = pkgs.every(n => n.s2b !== 'from the release' || REPRODUCED.has(n.s2a));
-    return { of, key: [['both', 'Reproducible in 2a and from the release', 'var(--c-strong)'], ['differs', 'Reproducible in 2a, differs from the release', 'var(--c-repro)'],
-        ['nobuild', 'Reproducible in 2a, not built from the release', '#a9c6e6'], ['unrep', 'Unreproducible in 2a', 'var(--c-differs)'],
-        ['failed', 'Did not build in 2a', 'var(--c-nobuild)'], ['notin', 'Not in both parts', null]],
-      caption: `Of the ${both} packages in both parts, ${det} are reproducible in 2a: with the three deterministic-build properties set, they build identically under all eight variations. `
-        + `${c('both')} of these are also reproduced from the release, ${c('differs')} build from it but differ, and ${c('nobuild')} do not build from it.`
-        + (among ? ` Every package reproduced from the release is among the ${det}, and none of the ${c('unrep')} unreproducible in 2a is: here, a deterministic build is necessary for a reproduction from the release, but not sufficient.` : '') };
+  { id: '2a-2b', title: '2a next to 2b', question: 'Reproducible in 2a, and reproduced from the release in 2b? The same graph twice.', build() {
+    const ok2a = n => REPRODUCED.has(n.s2a), ok2b = n => n.s2b === 'from the release';
+    const built = count(pkgs, n => n.s2a !== 'not in 2a' && n.s2a !== 'did not build'), a = count(pkgs, ok2a), b = count(pkgs, ok2b);
+    const in2b = count(pkgs, n => n.s2b !== 'not in 2b'), both = count(pkgs, n => ok2a(n) && n.s2b !== 'not in 2b'), among = pkgs.every(n => !ok2b(n) || ok2a(n));
+    return {
+      of: n => n.s2a === 'not in 2a' ? 'notin' : n.s2a === 'as is' ? 'asis' : n.s2a === 'with configuration' ? 'config' : 'tried', ok: ok2a,
+      key: [['asis', 'Reproducible as is', 'var(--c-strong)'], ['config', 'Reproducible with configuration', 'var(--c-repro)'],
+        ['tried', 'Unreproducible or did not build', '#c8c8c8'], ['notin', 'Not in 2a', null]],
+      heading: `2a: reproducible, ${a} of the ${built} built`,
+      right: { of: n => n.s2b === 'not in 2b' ? 'notin' : ok2b(n) ? 'release' : 'tried', ok: ok2b,
+        key: [['release', 'Reproduced from the release', 'var(--c-strong)'], ['tried', 'Not reproduced, no package or no recipe', '#c8c8c8'], ['notin', 'Not in 2b', null]],
+        heading: `2b: reproduced from the release, ${b} of ${in2b}` },
+      caption: `The same graph twice, with the same positions. Left, part 2a: the ${a} of the ${built} packages built that are reproducible; with the three deterministic-build properties set, they build identically under all eight variations. `
+        + `Right, part 2b: the ${b} of ${in2b} reproduced from the release.`
+        + (among ? ` Every package on the right is also on the left. Of the ${a} on the left, ${both} are in 2b, and ${b} of those come back from the release.` : '') };
   } },
   { id: 'verified', title: 'Verified all the way down', question: 'Which packages can be checked together with everything they pull in?', build() {
     const cls = new Map(), why = { alone: 0, all: 0 };
@@ -325,70 +339,100 @@ const built = new Map();
 function scheme() {
   if (!lens) return { of: n => kind(view, n), key: VIEWS[view].classes.filter(c => c[2]).map(([, k, t]) => [k, t]), color: k => `var(--c-${k})` };
   if (!built.has(lens)) built.set(lens, LENSES.find(l => l.id === lens).build());
-  const b = built.get(lens), colours = new Map(b.key.map(([k, , c]) => [k, c]));
-  return { of: n => n.kind !== 'package' ? 'own' : b.of(n), key: b.key.map(([k, t]) => [k, t]), color: k => colours.get(k), size: b.size, caption: b.caption };
+  const wrap = d => { const colours = new Map(d.key.map(([k, , c]) => [k, c]));
+    return { of: n => n.kind !== 'package' ? 'own' : d.of(n), key: d.key.map(([k, t]) => [k, t]), color: k => colours.get(k), size: d.size, caption: d.caption,
+      heading: d.heading, ok: d.ok && (n => n.kind === 'package' && d.ok(n)) }; };
+  const b = built.get(lens), sc = wrap(b);
+  if (b.right) sc.right = wrap(b.right);
+  return sc;
 }
 
-// Drawing
-const NS = 'http://www.w3.org/2000/svg', svg = document.querySelector('svg.map');
+// Drawing. A panel is one svg with the whole graph in it; the page has one, and the side-by-side view adds a second.
+const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; };
 const R = DATA.rings.at(-1), B = DATA.bracket;
 const P = (r, a) => `${(Math.cos(a) * r).toFixed(1)},${(Math.sin(a) * r).toFixed(1)}`;
-const bg = el('g', {}, svg), secEls = new Map();
-DATA.sectors.forEach((s, j) => {
-  const large = s.end - s.start > Math.PI ? 1 : 0;
-  const band = el('path', { class: j % 2 === 0 ? 'band' : 'band clear', d: `M${P(R + 12, s.start)} A${R + 12},${R + 12} 0 ${large} 1 ${P(R + 12, s.end)} L${P(125, s.end)} A125,125 0 ${large} 0 ${P(125, s.start)} Z` }, bg);
-  const arc = `M${P(B - 6, s.start)} L${P(B, s.start)} A${B},${B} 0 ${large} 1 ${P(B, s.end)} L${P(B - 6, s.end)}`;
-  const bracket = el('path', { class: 'bracket', d: arc }, bg);
-  el('path', { class: 'brackethit', d: arc, 'data-sec': s.key }, bg);
-  el('polyline', { class: 'leader', points: `${s.anchor} ${s.elbow} ${s.text[0] - s.side * 8},${s.text[1]}` }, bg);
-  const label = el('text', { class: 'seclabel', x: s.text[0], y: s.text[1] + 7, 'text-anchor': s.side > 0 ? 'start' : 'end',
-    'data-sec': s.key, tabindex: 0, role: 'button', 'aria-label': `${s.label}, ${s.count} packages` }, bg);
-  label.textContent = `${s.label} (${s.count})`;
-  secEls.set(s.key, { band, bracket, label });
-});
-const ringEls = new Map();
-DATA.rings.slice(1).forEach((r, i) => ringEls.set(i + 1, { r, circle: el('circle', { class: 'ring', r }, bg) }));
-for (const c of [...bg.querySelectorAll('.band')]) bg.insertBefore(c, bg.firstChild);
-const eg = el('g', { class: 'edges' }, svg);
-const lines = DATA.edges.map(e => { const a = byId.get(e.source), b = byId.get(e.target); return el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y }, eg); });
-const ng = el('g', { class: 'nodes' }, svg), marks = new Map();
-for (const n of nodes) marks.set(n.id, n.kind !== 'package' ? el('rect', { x: n.x - 7, y: n.y - 7, width: 14, height: 14 }, ng) : el('circle', { cx: n.x, cy: n.y, r: n.r + 0.3 }, ng));
-// A name in the box under the pointer, or tabbed to: a ring around its node, drawn over everything else.
-const halo = el('g', { class: 'peek', visibility: 'hidden' }, svg);
-el('circle', { class: 'under' }, halo); el('circle', { class: 'ring' }, halo);
-// The ring numbers, over the edges so that the pointer always reaches them: a hover explains the ring, a click filters by it.
-const rg = el('g', {}, svg);
-for (const [k, s] of ringEls) {
-  const label = k < LAST ? `${k}` : `≥${k}`;
-  s.key = el('g', { class: 'ringkey', 'data-ring': k, tabindex: 0, role: 'button', 'aria-label': `Ring ${label}, filter by this ring` }, rg);
-  el('rect', { class: 'ringhit', x: -26, y: -s.r + 1, width: 52, height: 24 }, s.key);
-  el('text', { class: 'ringlabel', x: 0, y: -s.r + 18 }, s.key).textContent = label;
+const WIDE = '-930 -550 1860 1100', ROUND = `${-(B + 22)} ${-(B + 22)} ${2 * (B + 22)} ${2 * (B + 22)}`; // the whole graph, or only the circle
+function drawPanel(svg) {
+  const bg = el('g', {}, svg), secEls = new Map(), ringEls = new Map();
+  DATA.sectors.forEach((s, j) => {
+    const large = s.end - s.start > Math.PI ? 1 : 0;
+    const band = el('path', { class: j % 2 === 0 ? 'band' : 'band clear', d: `M${P(R + 12, s.start)} A${R + 12},${R + 12} 0 ${large} 1 ${P(R + 12, s.end)} L${P(125, s.end)} A125,125 0 ${large} 0 ${P(125, s.start)} Z` }, bg);
+    const arc = `M${P(B - 6, s.start)} L${P(B, s.start)} A${B},${B} 0 ${large} 1 ${P(B, s.end)} L${P(B - 6, s.end)}`;
+    const bracket = el('path', { class: 'bracket', d: arc }, bg);
+    el('path', { class: 'brackethit', d: arc, 'data-sec': s.key }, bg);
+    el('polyline', { class: 'leader', points: `${s.anchor} ${s.elbow} ${s.text[0] - s.side * 8},${s.text[1]}` }, bg);
+    const label = el('text', { class: 'seclabel', x: s.text[0], y: s.text[1] + 7, 'text-anchor': s.side > 0 ? 'start' : 'end',
+      'data-sec': s.key, tabindex: 0, role: 'button', 'aria-label': `${s.label}, ${s.count} packages` }, bg);
+    label.textContent = `${s.label} (${s.count})`;
+    secEls.set(s.key, { band, bracket, label });
+  });
+  DATA.rings.slice(1).forEach((r, i) => ringEls.set(i + 1, { r, circle: el('circle', { class: 'ring', r }, bg) }));
+  for (const c of [...bg.querySelectorAll('.band')]) bg.insertBefore(c, bg.firstChild);
+  const eg = el('g', { class: 'edges' }, svg);
+  const lines = DATA.edges.map(e => { const a = byId.get(e.source), b = byId.get(e.target); return el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y }, eg); });
+  const ng = el('g', { class: 'nodes' }, svg), marks = new Map();
+  for (const n of nodes) marks.set(n.id, n.kind !== 'package' ? el('rect', { x: n.x - 7, y: n.y - 7, width: 14, height: 14 }, ng) : el('circle', { cx: n.x, cy: n.y, r: n.r + 0.3 }, ng));
+  // A name in the box under the pointer, or tabbed to: a ring around its node, drawn over everything else.
+  const halo = el('g', { class: 'peek', visibility: 'hidden' }, svg);
+  el('circle', { class: 'under' }, halo); el('circle', { class: 'ring' }, halo);
+  // The ring numbers, over the edges so that the pointer always reaches them: a hover explains the ring, a click filters by it.
+  const rg = el('g', {}, svg);
+  for (const [k, s] of ringEls) {
+    const label = k < LAST ? `${k}` : `≥${k}`;
+    s.key = el('g', { class: 'ringkey', 'data-ring': k, tabindex: 0, role: 'button', 'aria-label': `Ring ${label}, filter by this ring` }, rg);
+    el('rect', { class: 'ringhit', x: -26, y: -s.r + 1, width: 52, height: 24 }, s.key);
+    el('text', { class: 'ringlabel', x: 0, y: -s.r + 18 }, s.key).textContent = label;
+  }
+  return { svg, fig: svg.closest('.panel'), title: svg.closest('.panel').querySelector('.ptitle'), marks, lines, secEls, ringEls, halo };
+}
+const svg = document.querySelector('svg.map'), panels = [drawPanel(svg)];
+// The second panel, made the first time the side-by-side view opens.
+function secondPanel() {
+  if (panels[1]) return panels[1];
+  const fig = document.createElement('figure');
+  fig.className = 'panel'; fig.innerHTML = '<figcaption class="ptitle"></figcaption>';
+  const s2 = el('svg', { class: 'map', viewBox: ROUND, role: 'img', 'aria-label': 'The same graph, coloured by 2b' }, fig);
+  document.getElementById('graph').appendChild(fig);
+  const p = drawPanel(s2); wire(p); panels.push(p);
+  return p;
 }
 function peek(id) {
   const n = id && byId.get(id);
-  halo.setAttribute('visibility', n ? 'visible' : 'hidden');
-  if (!n) return;
-  halo.setAttribute('transform', `translate(${n.x},${n.y})`);
-  for (const c of halo.children) c.setAttribute('r', (n.kind === 'package' ? radius(n) : 10) + 11);
+  for (const { halo } of panels) {
+    halo.setAttribute('visibility', n ? 'visible' : 'hidden');
+    if (!n) continue;
+    halo.setAttribute('transform', `translate(${n.x},${n.y})`);
+    for (const c of halo.children) c.setAttribute('r', (n.kind === 'package' ? radius(n) : 10) + 11);
+  }
 }
 
+// The colourings of the panels shown: the first panel's is S, the second's S.right.
+const shown = () => S.right ? [[panels[0], S], [secondPanel(), S.right]] : [[panels[0], S]];
 function paint() {
   S = scheme();
-  for (const n of pkgs) {
-    const k = S.of(n), m = marks.get(n.id);
-    m.classList.toggle('notin', k === 'notin');
-    m.style.fill = k === 'notin' ? '' : S.color(k);
-    m.setAttribute('r', radius(n) + 0.3);
+  const two = !!S.right;
+  document.getElementById('graph').classList.toggle('compare', two);
+  if (panels[1]) panels[1].fig.hidden = !two;
+  for (const [p, sc] of shown()) {
+    p.svg.setAttribute('viewBox', two ? ROUND : WIDE);
+    p.title.hidden = !two;
+    p.title.innerHTML = two ? `<span class="h">${esc(sc.heading)}</span>` + sc.key.map(([k, t]) => { const c = count(pkgs, n => sc.of(n) === k); return c ? `<span class="lg">${dotIn(sc, k)}${esc(t)} (${c})</span>` : ''; }).join('') : '';
+    for (const n of pkgs) {
+      const k = sc.of(n), m = p.marks.get(n.id);
+      m.classList.toggle('notin', k === 'notin');
+      m.style.fill = k === 'notin' ? '' : sc.color(k);
+      m.setAttribute('r', radius(n) + 0.3);
+    }
   }
   const counts = {};
   for (const n of pkgs) counts[S.of(n)] = (counts[S.of(n)] || 0) + 1;
   counts.own = nodes.length - pkgs.length;
   const chip = (k, t) => `<li><button type="button" data-k="${k}" aria-pressed="${filter.has(k)}">${sdot(k)}${esc(t)} (${counts[k] || 0})</button></li>`;
   const key = document.getElementById('key');
-  key.innerHTML = S.key.filter(([k]) => counts[k]).map(([k, t]) => chip(k, t)).join('') + chip('own', 'Phoenix projects')
+  key.innerHTML = (two ? '' : S.key.filter(([k]) => counts[k]).map(([k, t]) => chip(k, t)).join('') + chip('own', 'Phoenix projects')) // two panels: each has its own key
     + (filter.size || ringFilter.size ? '<li><button type="button" class="all">Show all</button></li>' : '');
-  for (const [k, s] of ringEls) { const on = ringFilter.has(k); s.key.classList.toggle('on', on); s.circle.classList.toggle('on', on); s.key.setAttribute('aria-pressed', String(on)); }
+  for (const p of panels) for (const [k, s] of p.ringEls) { const on = ringFilter.has(k); s.key.classList.toggle('on', on); s.circle.classList.toggle('on', on); s.key.setAttribute('aria-pressed', String(on)); }
   key.classList.toggle('filtering', filter.size > 0);
   for (const b of document.querySelectorAll('.views button')) b.setAttribute('aria-pressed', String(!lens && b.dataset.view === view));
   const cap = document.getElementById('lens'), l = lens && LENSES.find(x => x.id === lens);
@@ -398,7 +442,7 @@ function paint() {
   fit();
 }
 // The graph fills the window below the header, whose height changes with the key and the caption.
-const fit = () => document.documentElement.style.setProperty('--graph-top', `${Math.round(svg.getBoundingClientRect().top + scrollY)}px`);
+const fit = () => document.documentElement.style.setProperty('--graph-top', `${Math.round(panels[0].svg.getBoundingClientRect().top + scrollY)}px`);
 addEventListener('resize', fit);
 
 // A sector's relations: its packages, the nodes outside that use them, the packages outside that they use.
@@ -427,29 +471,34 @@ function render() {
   const id = hover || pinned, sk = id ? null : (hoverSec || pinnedSec);
   const relOf = mode => id ? nodeRel(id, mode) : sk ? sectorRel(sk, mode) : null;
   const near = relOf('direct'), far = near && relOf('transitive');
-  for (const [nid, m] of marks) {
-    const on = passes(byId.get(nid)), isNear = !near || nid === id || related(near, nid);
-    const up = !isNear && on && !!far && far.usedBy.has(nid), down = !isNear && on && !!far && far.uses.has(nid);
-    m.classList.toggle('off', !on);
-    m.classList.toggle('sel', nid === id);
-    m.classList.toggle('insec', !!sk && near.inSec.has(nid));
-    m.classList.toggle('far', (up || down) && !(up && deepUp) && !(down && deepDown));
-    m.classList.toggle('dim', !isNear && !up && !down);
-  }
-  DATA.edges.forEach((e, i) => {
-    let c = '';
-    if (!passes(byId.get(e.source)) || !passes(byId.get(e.target))) c = 'off';
-    else if (near) {
-      c = edgeClass(e, id, near, 'direct');
-      const f = !c && far ? edgeClass(e, id, far, 'transitive') : '';
-      if (f) c = (f === 'down' ? deepDown : deepUp) ? f : `${f} far`;
+  for (const [p, sc] of shown()) {
+    const quiet = !near && sc.ok; // the side-by-side view, nothing selected: the reproduced packages and their edges stand out
+    for (const [nid, m] of p.marks) {
+      const n = byId.get(nid), on = passes(n), isNear = !near || nid === id || related(near, nid);
+      const up = !isNear && on && !!far && far.usedBy.has(nid), down = !isNear && on && !!far && far.uses.has(nid);
+      m.classList.toggle('off', !on);
+      m.classList.toggle('quiet', !!quiet && on && !sc.ok(n));
+      m.classList.toggle('sel', nid === id);
+      m.classList.toggle('insec', !!sk && near.inSec.has(nid));
+      m.classList.toggle('far', (up || down) && !(up && deepUp) && !(down && deepDown));
+      m.classList.toggle('dim', !isNear && !up && !down);
     }
-    lines[i].setAttribute('class', c);
-  });
-  for (const [k, s] of secEls) {
-    for (const x of [s.band, s.bracket, s.label]) x.classList.toggle('on', k === sk);
-    s.label.classList.toggle('empty', (filter.size > 0 || ringFilter.size > 0) && !pkgs.some(n => n.sector === k && passes(n)));
-    s.label.setAttribute('aria-pressed', String(k === pinnedSec));
+    DATA.edges.forEach((e, i) => {
+      let c = '';
+      const a = byId.get(e.source), b = byId.get(e.target);
+      if (!passes(a) || !passes(b) || (quiet && !(sc.ok(a) && sc.ok(b)))) c = 'off';
+      else if (near) {
+        c = edgeClass(e, id, near, 'direct');
+        const f = !c && far ? edgeClass(e, id, far, 'transitive') : '';
+        if (f) c = (f === 'down' ? deepDown : deepUp) ? f : `${f} far`;
+      }
+      p.lines[i].setAttribute('class', c);
+    });
+    for (const [k, s] of p.secEls) {
+      for (const x of [s.band, s.bracket, s.label]) x.classList.toggle('on', k === sk);
+      s.label.classList.toggle('empty', (filter.size > 0 || ringFilter.size > 0) && !pkgs.some(n => n.sector === k && passes(n)));
+      s.label.setAttribute('aria-pressed', String(k === pinnedSec));
+    }
   }
   renderBox();
 }
@@ -505,6 +554,7 @@ function renderBox() {
 
 // Pointer: a ring number, else a node within 9 screen pixels, else a sector (label, bracket, or its area).
 function target(ev) {
+  const svg = ev.currentTarget; // the panel the pointer is in
   const ring = ev.target.closest && ev.target.closest('[data-ring]');
   if (ring) return { ring: +ring.dataset.ring };
   const sec = ev.target.closest && ev.target.closest('[data-sec]');
@@ -540,16 +590,31 @@ const ringTip = k => {
 };
 const secTip = k => { const s = SECTORS.get(k); return `<div class="name">${esc(s.label)}</div><div class="meta">${s.count} package versions</div>`; };
 let lastPointer = 'mouse';
-svg.addEventListener('pointerdown', ev => { lastPointer = ev.pointerType; if (ev.pointerType !== 'mouse') tip.hidden = true; });
-svg.addEventListener('pointermove', ev => {
-  lastPointer = ev.pointerType;
-  if (ev.pointerType !== 'mouse') return; // a finger has no hover: a tap selects
-  const t = target(ev), nid = t.node ? t.node.id : null, sk = t.sector || null;
-  if (nid !== hover || sk !== hoverSec) { hover = nid; hoverSec = sk; render(); }
-  svg.style.cursor = nid || sk || t.ring ? 'pointer' : 'default';
-  if (t.node) showTip(nodeTip(t.node), ev); else if (t.ring) showTip(ringTip(t.ring), ev); else if (sk) showTip(secTip(sk), ev); else tip.hidden = true;
-});
-svg.addEventListener('pointerleave', () => { hover = null; hoverSec = null; tip.hidden = true; render(); });
+// The pointer and the keys work the same in every panel; a selection shows in all of them.
+function wire({ svg }) {
+  svg.addEventListener('pointerdown', ev => { lastPointer = ev.pointerType; if (ev.pointerType !== 'mouse') tip.hidden = true; });
+  svg.addEventListener('pointermove', ev => {
+    lastPointer = ev.pointerType;
+    if (ev.pointerType !== 'mouse') return; // a finger has no hover: a tap selects
+    const t = target(ev), nid = t.node ? t.node.id : null, sk = t.sector || null;
+    if (nid !== hover || sk !== hoverSec) { hover = nid; hoverSec = sk; render(); }
+    svg.style.cursor = nid || sk || t.ring ? 'pointer' : 'default';
+    if (t.node) showTip(nodeTip(t.node), ev); else if (t.ring) showTip(ringTip(t.ring), ev); else if (sk) showTip(secTip(sk), ev); else tip.hidden = true;
+  });
+  svg.addEventListener('pointerleave', () => { hover = null; hoverSec = null; tip.hidden = true; render(); });
+  svg.addEventListener('click', ev => {
+    const t = target(ev);
+    if (t.ring) toggleRing(t.ring);
+    else if (t.node) { pinned = t.node.id !== pinned ? t.node.id : null; render(); }
+    else if (t.sector) selectSector(t.sector);
+    else reset();
+  });
+  svg.addEventListener('keydown', ev => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const s = ev.target.closest && ev.target.closest('.seclabel'), r = ev.target.closest && ev.target.closest('[data-ring]');
+    if (s) { ev.preventDefault(); selectSector(s.dataset.sec); } else if (r) { ev.preventDefault(); toggleRing(+r.dataset.ring); }
+  });
+}
 function selectSector(k) { pinnedSec = k && k !== pinnedSec ? k : null; pinned = null; render(); }
 function toggleRing(k) { ringFilter.has(k) ? ringFilter.delete(k) : ringFilter.add(k); if (pinned && !passes(byId.get(pinned))) pinned = null; tip.hidden = true; paint(); render(); }
 // A view from the menu, or null for the graph's own colouring. The address keeps it, so a link opens it.
@@ -566,21 +631,9 @@ function reset() {
   pinned = null; pinnedSec = null; hover = null; hoverSec = null; filter.clear(); ringFilter.clear(); deepUp = deepDown = false; find.value = ''; tip.hidden = true;
   if (!busy && lens) setLens(null); else { paint(); render(); }
 }
-svg.addEventListener('click', ev => {
-  const t = target(ev);
-  if (t.ring) toggleRing(t.ring);
-  else if (t.node) { pinned = t.node.id !== pinned ? t.node.id : null; render(); }
-  else if (t.sector) selectSector(t.sector);
-  else reset();
-});
 // A click on the page's white background resets too; the graph, the box, the menu and the controls handle their own clicks.
 // The path, not closest(): the key and the box redraw themselves on a click, so its target may have left the page.
-document.addEventListener('click', ev => { if (!ev.composedPath().some(e => e.matches?.('svg.map, .box, .key, .views, .tools, .lens, .drawer'))) reset(); });
-svg.addEventListener('keydown', ev => {
-  if (ev.key !== 'Enter' && ev.key !== ' ') return;
-  const s = ev.target.closest && ev.target.closest('.seclabel'), r = ev.target.closest && ev.target.closest('[data-ring]');
-  if (s) { ev.preventDefault(); selectSector(s.dataset.sec); } else if (r) { ev.preventDefault(); toggleRing(+r.dataset.ring); }
-});
+document.addEventListener('click', ev => { if (!ev.composedPath().some(e => e.matches?.('svg.map, .ptitle, .box, .key, .views, .tools, .lens, .drawer'))) reset(); });
 document.getElementById('box').addEventListener('click', ev => {
   const it = ev.target.closest('.it'), more = ev.target.closest('.more');
   if (ev.target.closest('.close')) { pinned = null; pinnedSec = null; }
@@ -606,9 +659,10 @@ for (const b of document.querySelectorAll('.views button')) b.addEventListener('
 
 // The menu: a panel from the right with the views.
 const drawer = document.getElementById('drawer'), menu = document.getElementById('menu');
+const listLenses = () => { document.getElementById('lenses').innerHTML = [{ id: '', title: 'The graph', question: "2a's or 2b's results, as the buttons at the top choose." }, ...LENSES]
+  .map(l => `<li><button type="button" data-lens="${l.id}" aria-current="${(l.id || null) === lens}"><span class="t">${esc(l.title)}</span><span class="q">${esc(l.question)}</span></button></li>`).join(''); };
 function openDrawer(open, refocus = true) {
-  if (open) document.getElementById('lenses').innerHTML = [{ id: '', title: 'The graph', question: "2a's or 2b's results, as the buttons at the top choose." }, ...LENSES]
-    .map(l => `<li><button type="button" data-lens="${l.id}" aria-current="${(l.id || null) === lens}"><span class="t">${esc(l.title)}</span><span class="q">${esc(l.question)}</span></button></li>`).join('');
+  if (open) listLenses();
   drawer.classList.toggle('open', open); drawer.toggleAttribute('inert', !open); menu.setAttribute('aria-expanded', String(open));
   if (refocus) (open ? drawer.querySelector('[aria-current="true"]') : menu).focus();
 }
@@ -616,7 +670,7 @@ menu.addEventListener('click', () => openDrawer(!drawer.classList.contains('open
 drawer.addEventListener('click', ev => {
   const b = ev.target.closest('[data-lens]');
   if (ev.target.closest('.shut')) openDrawer(false);
-  else if (b) { setLens(b.dataset.lens || null); openDrawer(false); }
+  else if (b) { setLens(b.dataset.lens || null); listLenses(); drawer.querySelector('[aria-current="true"]').focus(); } // the panel stays open
 });
 document.addEventListener('pointerdown', ev => { if (drawer.classList.contains('open') && !ev.composedPath().some(e => e === drawer || e === menu)) openDrawer(false, false); });
 
@@ -633,6 +687,7 @@ document.addEventListener('keydown', ev => {
 });
 const fromAddress = () => { const m = /^#view=([\w-]+)$/.exec(location.hash); return m && LENSES.some(l => l.id === m[1]) ? m[1] : null; };
 addEventListener('hashchange', () => { if (fromAddress() !== lens) setLens(fromAddress()); });
+wire(panels[0]);
 lens = fromAddress();
 paint();
 render();
