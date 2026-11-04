@@ -27,7 +27,7 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .views { display: flex; gap: 18px; }
 .views button { all: unset; font-size: 20px; color: var(--muted); cursor: pointer; }
 .views button[aria-pressed="true"] { color: var(--text); }
-.views button:focus-visible, .find input:focus-visible, .box button:focus-visible, .menu:focus-visible, .lens .leave:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.views button:focus-visible, .find input:focus-visible, .box button:focus-visible, .menu:focus-visible, #lenses .leave:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .tools { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 .find { display: flex; gap: 6px; align-items: baseline; font-size: 12px; color: var(--muted); }
 .find input { font: 12px var(--sans); width: 170px; padding: 2px 4px; border: 1px solid #b5b5b5; border-radius: 0; background: var(--paper); color: var(--text); }
@@ -43,14 +43,6 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .key.filtering button[aria-pressed="false"] { color: #b0b0b0; }
 .key.filtering button[aria-pressed="false"] .dot { opacity: .35; }
 .key .all { color: var(--muted); text-decoration: underline; }
-/* A view's description: one box, in the same place for every view, right under the title line. */
-.lens { margin: 12px 0 4px 8px; max-width: 540px; box-sizing: border-box; padding: 9px 14px 11px; background: #fafafa;
-  border: 1px solid #d6d6d6; border-left: 3px solid var(--text); font-size: 12.5px; line-height: 1.5; color: var(--soft); }
-.lens .lhead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 3px; }
-.lens .t { font-weight: 700; font-size: 13px; color: var(--text); }
-.lens .leave { all: unset; margin-left: auto; cursor: pointer; white-space: nowrap; font-size: 11.5px; color: var(--text);
-  background: var(--paper); border: 1px solid #b5b5b5; border-radius: 3px; padding: 1px 8px; }
-.lens .leave:hover { border-color: var(--text); }
 .nodes .off { opacity: .07; }
 .edges line.off { stroke-opacity: .03; }
 .seclabel.empty { fill: #bbbbbb !important; }
@@ -156,10 +148,18 @@ svg.map text.seclabel { fill: #4a4a4a; }
 .dhead .shut:hover { color: var(--text); }
 .dnote { font-size: 11.5px; color: var(--muted); margin: 6px 0 10px; }
 #lenses { list-style: none; margin: 0 -10px; padding: 0; }
-#lenses button { all: unset; display: block; width: 100%; box-sizing: border-box; padding: 8px 10px; cursor: pointer; border-left: 3px solid transparent; }
-#lenses button:hover { background: var(--band); }
-#lenses button[aria-current="true"] { border-left-color: var(--text); }
+#lenses li { border-left: 3px solid transparent; }
+#lenses li.on { border-left-color: var(--text); background: var(--band); }
+#lenses button[data-lens] { all: unset; display: block; width: 100%; box-sizing: border-box; padding: 8px 10px; cursor: pointer; }
+#lenses li:not(.on) button[data-lens]:hover { background: var(--band); }
 #lenses button:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+/* The chosen view's description drops down under its name. */
+#lenses .desc { padding: 0 12px 11px 10px; font-size: 12px; line-height: 1.5; color: var(--soft); animation: drop .18s ease-out; }
+#lenses .leave { all: unset; display: inline-block; margin-top: 9px; cursor: pointer; font-size: 11.5px; color: var(--text);
+  background: var(--paper); border: 1px solid #b5b5b5; border-radius: 3px; padding: 1px 8px; }
+#lenses .leave:hover { border-color: var(--text); }
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { #lenses .desc { animation: none; } }
 #lenses .t { display: block; font-size: 13px; font-weight: 700; }
 #lenses .q { display: block; font-size: 11.5px; color: var(--soft); margin-top: 1px; }
 
@@ -203,7 +203,6 @@ body { margin: 0; }
     </div>
     <datalist id="pkglist"></datalist>
   </div>
-  <div class="lens" id="lens" role="note" hidden></div>
   <ul class="key" id="key"></ul>
   <div class="stage">
     <div class="graph" id="graph"><figure class="panel"><figcaption class="ptitle" hidden></figcaption><svg class="map" viewBox="-930 -550 1860 1100" role="img" aria-label="Dependency graph of the 341 package versions Phoenix ships"></svg></figure></div>
@@ -214,7 +213,7 @@ body { margin: 0; }
 <div class="tip" id="tip" hidden></div>
 <aside class="drawer" id="drawer" aria-label="Views" inert>
   <div class="dhead"><span>Views</span><button type="button" class="shut">Close</button></div>
-  <p class="dnote">Each view recolours the graph and says, in a caption, what it shows. The numbers are counted from the page's data. The address keeps the view, so a link opens it.</p>
+  <p class="dnote">Each view recolours the graph; its description opens under its name. The numbers are counted from the page's data. The address keeps the view, so a link opens it.</p>
   <ul id="lenses"></ul>
 </aside>
 
@@ -449,9 +448,7 @@ function paint() {
   for (const p of panels) for (const [k, s] of p.ringEls) { const on = ringFilter.has(k); s.key.classList.toggle('on', on); s.circle.classList.toggle('on', on); s.key.setAttribute('aria-pressed', String(on)); }
   key.classList.toggle('filtering', filter.size > 0);
   for (const b of document.querySelectorAll('.views button')) b.setAttribute('aria-pressed', String(!lens && b.dataset.view === view));
-  const cap = document.getElementById('lens'), l = lens && LENSES.find(x => x.id === lens);
-  cap.hidden = !l;
-  cap.innerHTML = l ? `<div class="lhead"><span class="t">${esc(l.title)}</span><button type="button" class="leave" title="Escape does the same">← Back to the graph</button></div><div>${S.caption}</div>` : '';
+  const l = lens && LENSES.find(x => x.id === lens);
   document.querySelector('#menu .ml').textContent = l ? `Views: ${l.title}` : 'Views';
   fit();
 }
@@ -638,6 +635,7 @@ function setLens(id) {
   try { history.replaceState(null, '', lens ? `#view=${lens}` : location.pathname + location.search); } catch (e) { /* not every frame may change its address */ }
   if (pinned && !passes(byId.get(pinned))) pinned = null;
   paint(); render();
+  if (drawer.classList.contains('open')) listLenses();
 }
 // Back to the default: nothing selected, no filter, nothing unfolded. A view from the menu stays until a click finds nothing else to clear.
 function reset() {
@@ -647,7 +645,7 @@ function reset() {
 }
 // A click on the page's white background resets too; the graph, the box, the menu and the controls handle their own clicks.
 // The path, not closest(): the key and the box redraw themselves on a click, so its target may have left the page.
-document.addEventListener('click', ev => { if (!ev.composedPath().some(e => e.matches?.('svg.map, .ptitle, .box, .key, .views, .tools, .lens, .drawer'))) reset(); });
+document.addEventListener('click', ev => { if (!ev.composedPath().some(e => e.matches?.('svg.map, .ptitle, .box, .key, .views, .tools, .drawer'))) reset(); });
 document.getElementById('box').addEventListener('click', ev => {
   const it = ev.target.closest('.it'), more = ev.target.closest('.more');
   if (ev.target.closest('.close')) { pinned = null; pinnedSec = null; }
@@ -668,13 +666,14 @@ document.getElementById('key').addEventListener('click', ev => {
   if (pinned && !passes(byId.get(pinned))) pinned = null;
   paint(); render();
 });
-document.getElementById('lens').addEventListener('click', ev => { if (ev.target.closest('.leave')) setLens(null); });
 for (const b of document.querySelectorAll('.views button')) b.addEventListener('click', () => { view = b.dataset.view; if (lens) setLens(null); else { paint(); render(); } });
 
 // The menu: a panel from the right with the views.
 const drawer = document.getElementById('drawer'), menu = document.getElementById('menu');
 const listLenses = () => { document.getElementById('lenses').innerHTML = [{ id: '', title: 'The graph', question: "2a's or 2b's results, as the buttons at the top choose." }, ...LENSES]
-  .map(l => `<li><button type="button" data-lens="${l.id}" aria-current="${(l.id || null) === lens}"><span class="t">${esc(l.title)}</span><span class="q">${esc(l.question)}</span></button></li>`).join(''); };
+  .map(l => { const on = (l.id || null) === lens;
+    return `<li class="${on ? 'on' : ''}"><button type="button" data-lens="${l.id}" aria-current="${on}"><span class="t">${esc(l.title)}</span><span class="q">${esc(l.question)}</span></button>`
+      + (on && lens ? `<div class="desc">${S.caption}<br><button type="button" class="leave" title="Escape does the same">← Back to the graph</button></div>` : '') + '</li>'; }).join(''); };
 function openDrawer(open, refocus = true) {
   if (open) listLenses();
   drawer.classList.toggle('open', open); drawer.toggleAttribute('inert', !open); menu.setAttribute('aria-expanded', String(open));
@@ -685,7 +684,8 @@ menu.addEventListener('click', () => openDrawer(!drawer.classList.contains('open
 drawer.addEventListener('click', ev => {
   const b = ev.target.closest('[data-lens]');
   if (ev.target.closest('.shut')) openDrawer(false);
-  else if (b) { setLens(b.dataset.lens || null); listLenses(); drawer.querySelector('[aria-current="true"]').focus(); } // the panel stays open
+  else if (ev.target.closest('.leave')) { setLens(null); drawer.querySelector('[aria-current="true"]').focus(); }
+  else if (b) { setLens(b.dataset.lens || null); drawer.querySelector('[aria-current="true"]').focus(); } // the panel stays open, the description drops down
 });
 // Beside the page, the panel stays while the graph is used; over the page (a narrow screen), a tap elsewhere closes it.
 const narrow = matchMedia('(max-width: 1000px)');
@@ -705,11 +705,12 @@ document.addEventListener('keydown', ev => {
   pinned = null; pinnedSec = null; hover = null; hoverSec = null; tip.hidden = true; render();
 });
 const fromAddress = () => { const m = /^#view=([\w-]+)$/.exec(location.hash); return m && LENSES.some(l => l.id === m[1]) ? m[1] : null; };
-addEventListener('hashchange', () => { if (fromAddress() !== lens) setLens(fromAddress()); });
+addEventListener('hashchange', () => { if (fromAddress() !== lens) { setLens(fromAddress()); if (lens && !narrow.matches && !drawer.classList.contains('open')) openDrawer(true, false); } });
 wire(panels[0]);
 lens = fromAddress();
 paint();
 render();
+if (lens && !narrow.matches) openDrawer(true, false); // a link to a view: its description shows beside the graph
 { const g = document.querySelector('.graph'); g.scrollLeft = (g.scrollWidth - g.clientWidth) / 2; }
 </script>
 
