@@ -42,7 +42,6 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .edges line.off { stroke-opacity: .03; }
 .seclabel.empty { fill: #bbbbbb !important; }
 .key .n { color: var(--muted); }
-.rings { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 .dot.notin { background: var(--paper); box-shadow: inset 0 0 0 1.2px var(--notin); }
 .dot.own { border-radius: 0; background: #1a1a1a; }
@@ -50,7 +49,14 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 svg.map { display: block; width: 100%; height: auto; max-height: calc(100vh - 96px); margin: 4px auto 0; }
 svg.map text { font-family: var(--sans); fill: #333333; }
 .ring { fill: none; stroke: var(--hair); stroke-width: 1.2; }
-.ringlabel { font-size: 19px; fill: #8c8c8c !important; text-anchor: middle; }
+.ringlabel { font-size: 19px; fill: #8c8c8c !important; text-anchor: middle; paint-order: stroke; stroke: var(--paper); stroke-width: 5px; stroke-linejoin: round; }
+.ringkey { cursor: pointer; }
+.ringhit { fill: transparent; }
+.ringkey:hover .ringlabel, .ringkey.on .ringlabel { fill: #111111 !important; }
+.ringkey.on .ringlabel { font-weight: 700; }
+.ringkey:focus { outline: none; }
+.ringkey:focus-visible .ringlabel { text-decoration: underline; }
+.ring.on { stroke: #8c8c8c; stroke-width: 2.4; }
 .band { fill: var(--band); }
 .band.clear { fill: transparent; }
 .band.on { fill: #e4e4e4; }
@@ -140,7 +146,6 @@ body { margin: 0; }
     <datalist id="pkglist"></datalist>
   </div>
   <ul class="key" id="key"></ul>
-  <p class="rings">Rings count the steps from Phoenix's projects: ring 1 is what a project names (direct), rings 2 and out come along with other packages (transitive). With something selected, Direct draws one step dark and the steps further out faint.</p>
   <div class="stage">
     <div class="graph"><svg class="map" viewBox="-930 -550 1860 1100" role="img" aria-label="Dependency graph of the 341 package versions Phoenix ships"></svg></div>
     <div class="box" id="box" hidden></div>
@@ -161,6 +166,7 @@ const VIEWS = {
     ['no package', 'nobuild', 'No package or no recipe'], ['no recipe', 'nobuild', null], ['not in 2b', 'notin', 'Not in 2b'] ] },
 };
 let filter = new Set(); // colour classes to show; empty shows all
+let ringFilter = new Set(); // rings to show; empty shows all
 let view = '2b', pinned = null, hover = null, pinnedSec = null, hoverSec = null, relMode = 'direct';
 
 const nodes = DATA.nodes, byId = new Map(nodes.map(n => [n.id, n]));
@@ -177,7 +183,9 @@ const reachIn = (id, adj) => { const s = new Set(), st = [id]; while (st.length)
 const downOf = id => { const s = new Set(); for (const p of PROGRAMS) for (const x of reachIn(id, outsBy[p])) s.add(x); return s; };
 const upOf = id => reachIn(id, ins);
 const SECTORS = new Map(DATA.sectors.map(s => [s.key, s]));
-const passes = n => !filter.size || filter.has(kind(view, n));
+// The outermost ring holds everything from its step out. Phoenix's projects pass every ring filter.
+const ringOf = n => Math.min(n.step, DATA.rings.length - 1);
+const passes = n => (!filter.size || filter.has(kind(view, n))) && (!ringFilter.size || n.kind !== 'package' || ringFilter.has(ringOf(n)));
 
 const kind = (v, n) => n.kind !== 'package' ? 'own' : (VIEWS[v].classes.find(c => c[0] === n[VIEWS[v].field]) || [0, 'notin'])[1];
 const word = (v, n) => { const k = kind(v, n); return k === 'own' ? 'Phoenix project' : VIEWS[v].classes.find(c => c[1] === k && c[2])[2]; };
@@ -205,10 +213,8 @@ DATA.sectors.forEach((s, j) => {
   label.textContent = `${s.label} (${s.count})`;
   secEls.set(s.key, { band, bracket, label });
 });
-DATA.rings.slice(1).forEach((r, i) => {
-  el('circle', { class: 'ring', r }, bg);
-  el('text', { class: 'ringlabel', x: 0, y: -r + 18 }, bg).textContent = i + 1 < DATA.rings.length - 1 ? i + 1 : `≥${i + 1}`;
-});
+const ringEls = new Map();
+DATA.rings.slice(1).forEach((r, i) => ringEls.set(i + 1, { r, circle: el('circle', { class: 'ring', r }, bg) }));
 for (const c of [...bg.querySelectorAll('.band')]) bg.insertBefore(c, bg.firstChild);
 const eg = el('g', { class: 'edges' }, svg);
 const lines = DATA.edges.map(e => { const a = byId.get(e.source), b = byId.get(e.target); return el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y }, eg); });
@@ -217,6 +223,14 @@ for (const n of nodes) marks.set(n.id, n.kind !== 'package' ? el('rect', { x: n.
 // A name in the box under the pointer, or tabbed to: a ring around its node, drawn over everything else.
 const halo = el('g', { class: 'peek', visibility: 'hidden' }, svg);
 el('circle', { class: 'under' }, halo); el('circle', { class: 'ring' }, halo);
+// The ring numbers, over the edges so that the pointer always reaches them: a hover explains the ring, a click filters by it.
+const rg = el('g', {}, svg);
+for (const [k, s] of ringEls) {
+  const label = k < DATA.rings.length - 1 ? `${k}` : `≥${k}`;
+  s.key = el('g', { class: 'ringkey', 'data-ring': k, tabindex: 0, role: 'button', 'aria-label': `Ring ${label}, filter by this ring` }, rg);
+  el('rect', { class: 'ringhit', x: -26, y: -s.r + 1, width: 52, height: 24 }, s.key);
+  el('text', { class: 'ringlabel', x: 0, y: -s.r + 18 }, s.key).textContent = label;
+}
 function peek(id) {
   const n = id && byId.get(id);
   halo.setAttribute('visibility', n ? 'visible' : 'hidden');
@@ -237,7 +251,8 @@ function paint() {
   const chip = (k, t) => `<li><button type="button" data-k="${k}" aria-pressed="${filter.has(k)}">${dot(k)}${t} (${counts[k] || 0})</button></li>`;
   const key = document.getElementById('key');
   key.innerHTML = VIEWS[view].classes.filter(c => c[2]).map(([, k, t]) => chip(k, t)).join('') + chip('own', 'Phoenix projects')
-    + (filter.size ? '<li><button type="button" class="all">Show all</button></li>' : '');
+    + (filter.size || ringFilter.size ? '<li><button type="button" class="all">Show all</button></li>' : '');
+  for (const [k, s] of ringEls) { const on = ringFilter.has(k); s.key.classList.toggle('on', on); s.circle.classList.toggle('on', on); s.key.setAttribute('aria-pressed', String(on)); }
   key.classList.toggle('filtering', filter.size > 0);
   for (const b of document.querySelectorAll('.views button')) b.setAttribute('aria-pressed', String(b.dataset.view === view));
 }
@@ -288,7 +303,7 @@ function render() {
   });
   for (const [k, s] of secEls) {
     for (const x of [s.band, s.bracket, s.label]) x.classList.toggle('on', k === sk);
-    s.label.classList.toggle('empty', filter.size > 0 && !pkgs.some(n => n.sector === k && passes(n)));
+    s.label.classList.toggle('empty', (filter.size > 0 || ringFilter.size > 0) && !pkgs.some(n => n.sector === k && passes(n)));
     s.label.setAttribute('aria-pressed', String(k === pinnedSec));
   }
   renderBox();
@@ -314,7 +329,7 @@ function whyLine(n) {
   const names = c.map(d => brk(d.name)), shown = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
   return `<div class="row why"><span class="label">Brought in by</span> ${shown}</div>`;
 }
-const modeRow = () => `<div class="row mode"><button type="button" data-mode="direct" aria-pressed="${relMode === 'direct'}">Direct</button><button type="button" data-mode="transitive" aria-pressed="${relMode === 'transitive'}">Transitive</button></div>`;
+const modeRow = () => `<div class="row mode"><button type="button" data-mode="direct" aria-pressed="${relMode === 'direct'}" title="One edge from the selection; the steps further out are drawn faint">Direct</button><button type="button" data-mode="transitive" aria-pressed="${relMode === 'transitive'}" title="Any number of edges from the selection">Transitive</button></div>`;
 function renderBox() {
   const box = document.getElementById('box'), n = pinned && byId.get(pinned);
   if (n) {
@@ -338,6 +353,8 @@ function renderBox() {
 
 // Pointer: a node within 9 screen pixels, else a sector (label, bracket, or its area).
 function target(ev) {
+  const ring = ev.target.closest && ev.target.closest('[data-ring]');
+  if (ring) return { ring: +ring.dataset.ring };
   const sec = ev.target.closest && ev.target.closest('[data-sec]');
   if (sec) return { sector: sec.dataset.sec };
   const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
@@ -362,6 +379,13 @@ function showTip(html, ev) {
 }
 const nodeTip = n => `<div class="name">${esc(pretty(n))}</div>${n.kind === 'package' ? `${n.what ? `<div class="what">${esc(n.what)}</div>` : ''}<div class="meta">${esc(repoName(n))}</div>
   <div>${dot(kind('2a', n))} 2a: ${esc(word('2a', n))}</div><div>${dot(kind('2b', n))} 2b: ${esc(word('2b', n))}</div>` : '<div class="meta">Phoenix project</div>'}`;
+const ringTip = k => {
+  const n = pkgs.filter(p => ringOf(p) === k).length, last = k === DATA.rings.length - 1;
+  const what = k === 1 ? "one step from Phoenix's projects: the packages a project names, and the SDK's runtime packs and dotnet-ef"
+    : `${last ? `${k} or more steps` : `${k} steps`} from Phoenix's projects, brought in by the packages further in`;
+  return `<div class="name">Ring ${last ? '≥' : ''}${k}: ${k === 1 ? 'direct' : 'transitive'}</div><div>${n} package versions ${what}.</div>
+    <div class="meta">${ringFilter.has(k) ? 'Click to take this ring out of the filter.' : 'Click to filter by this ring.'}</div>`;
+};
 const secTip = k => { const s = SECTORS.get(k); return `<div class="name">${esc(s.label)}</div><div class="meta">${s.count} package versions</div>`; };
 let lastPointer = 'mouse';
 svg.addEventListener('pointerdown', ev => { lastPointer = ev.pointerType; if (ev.pointerType !== 'mouse') tip.hidden = true; });
@@ -370,23 +394,29 @@ svg.addEventListener('pointermove', ev => {
   if (ev.pointerType !== 'mouse') return; // a finger has no hover: a tap selects
   const t = target(ev), nid = t.node ? t.node.id : null, sk = t.sector || null;
   if (nid !== hover || sk !== hoverSec) { hover = nid; hoverSec = sk; render(); }
-  svg.style.cursor = nid || sk ? 'pointer' : 'default';
-  if (t.node) showTip(nodeTip(t.node), ev); else if (sk) showTip(secTip(sk), ev); else tip.hidden = true;
+  svg.style.cursor = nid || sk || t.ring ? 'pointer' : 'default';
+  if (t.node) showTip(nodeTip(t.node), ev); else if (t.ring) showTip(ringTip(t.ring), ev); else if (sk) showTip(secTip(sk), ev); else tip.hidden = true;
 });
 svg.addEventListener('pointerleave', () => { hover = null; hoverSec = null; tip.hidden = true; render(); });
 function selectSector(k) { pinnedSec = k && k !== pinnedSec ? k : null; pinned = null; render(); }
+function toggleRing(k) { ringFilter.has(k) ? ringFilter.delete(k) : ringFilter.add(k); if (pinned && !passes(byId.get(pinned))) pinned = null; tip.hidden = true; paint(); render(); }
 // Back to the default: nothing selected, no filter, Direct. The view, 2a or 2b, stays.
-function reset() { pinned = null; pinnedSec = null; hover = null; hoverSec = null; filter.clear(); relMode = 'direct'; find.value = ''; tip.hidden = true; paint(); render(); }
+function reset() { pinned = null; pinnedSec = null; hover = null; hoverSec = null; filter.clear(); ringFilter.clear(); relMode = 'direct'; find.value = ''; tip.hidden = true; paint(); render(); }
 svg.addEventListener('click', ev => {
   const t = target(ev);
-  if (t.node) { pinned = t.node.id !== pinned ? t.node.id : null; render(); }
+  if (t.ring) toggleRing(t.ring);
+  else if (t.node) { pinned = t.node.id !== pinned ? t.node.id : null; render(); }
   else if (t.sector) selectSector(t.sector);
   else reset();
 });
 // A click on the page's white background resets too; the graph, the box and the controls handle their own clicks.
 // The path, not closest(): the key and the box redraw themselves on a click, so its target may have left the page.
 document.addEventListener('click', ev => { if (!ev.composedPath().some(e => e.matches?.('svg.map, .box, .key, .views, .find'))) reset(); });
-svg.addEventListener('keydown', ev => { const s = ev.target.closest && ev.target.closest('.seclabel'); if (s && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); selectSector(s.dataset.sec); } });
+svg.addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const s = ev.target.closest && ev.target.closest('.seclabel'), r = ev.target.closest && ev.target.closest('[data-ring]');
+  if (s) { ev.preventDefault(); selectSector(s.dataset.sec); } else if (r) { ev.preventDefault(); toggleRing(+r.dataset.ring); }
+});
 document.getElementById('box').addEventListener('click', ev => {
   const it = ev.target.closest('.it'), mode = ev.target.closest('[data-mode]');
   if (ev.target.closest('.close')) { pinned = null; pinnedSec = null; }
@@ -401,7 +431,7 @@ for (const t of ['pointerleave', 'focusout']) document.getElementById('box').add
 document.getElementById('key').addEventListener('click', ev => {
   const b = ev.target.closest('button');
   if (!b) return;
-  if (b.classList.contains('all')) filter.clear();
+  if (b.classList.contains('all')) { filter.clear(); ringFilter.clear(); }
   else if (filter.has(b.dataset.k)) filter.delete(b.dataset.k);
   else filter.add(b.dataset.k);
   if (pinned && !passes(byId.get(pinned))) pinned = null;
