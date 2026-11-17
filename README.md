@@ -1,6 +1,6 @@
-# Phoenix dependencies
+# WS.PEMS dependencies
 
-The dependency graph of the 341 package versions that Phoenix ships at commit
+The dependency graph of the 341 package versions that WS.PEMS ships at commit
 `79cb67a7`, coloured by the results of experiment 2a (build determinism) and
 2b (rebuild against nuget.org).
 
